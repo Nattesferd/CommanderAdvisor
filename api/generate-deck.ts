@@ -24,7 +24,22 @@ export default async function handler(
     return json(405, { error: 'Method not allowed' })
   }
 
-  const body = req.body as Body
+  // body parsing with fallback
+  let body: Body = req.body as Body
+  if (!body) {
+    body = await new Promise((resolve, reject) => {
+      let data = ''
+      req.on('data', (chunk) => (data += chunk))
+      req.on('end', () => {
+        try {
+          resolve(data ? JSON.parse(data) : {})
+        } catch (e) {
+          reject(e)
+        }
+      })
+    })
+  }
+
   const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) {
     return json(500, { error: 'OPENAI_API_KEY mancante nel backend' })

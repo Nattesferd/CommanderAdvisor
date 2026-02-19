@@ -1483,9 +1483,11 @@ function ManaIcons({ cost }: { cost?: string }) {
                           </div>
                           <div className="flex items-center justify-between gap-2">
                             <p className="text-xs text-slate-300 line-clamp-2">{entry.card.type_line}</p>
-                            <span className="text-xs text-emerald-200/80">
-                              {entry.card.prices?.usd ?? entry.card.prices?.eur ? `$${entry.card.prices?.usd ?? entry.card.prices?.eur}` : 'n/a'}
-                            </span>
+                            {entry.card.prices?.usd ?? entry.card.prices?.eur ? (
+                              <span className="text-xs text-emerald-200/80">
+                                ${entry.card.prices?.usd ?? entry.card.prices?.eur}
+                              </span>
+                            ) : null}
                           </div>
                         </button>
                       ))}
