@@ -80,6 +80,7 @@ export default async function handler(
 
     if (!completion.ok) {
       const text = await completion.text()
+      console.error('OpenAI error', completion.status, completion.statusText, text.slice(0, 400))
       return json(500, { error: 'LLM error', detail: text })
     }
 

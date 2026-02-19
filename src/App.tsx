@@ -152,10 +152,14 @@ function App() {
     { role: Role; needed: number; candidates: ScryfallCard[] }[]
   >([])
   const apiBase = useMemo(() => {
-    const envBase = import.meta.env.VITE_API_BASE as string | undefined
-    if (envBase && envBase.trim().length) return envBase.trim()
-    if (import.meta.env.PROD) return window.location.origin
-    return ''
+    const envBase = (import.meta.env.VITE_API_BASE as string | undefined)?.trim()
+    const base =
+      envBase && envBase.length
+        ? envBase
+        : import.meta.env.PROD
+          ? window.location.origin
+          : ''
+    return base.endsWith('/') ? base.slice(0, -1) : base
   }, [])
 
   const colorIdentityLabel = useMemo(() => {
