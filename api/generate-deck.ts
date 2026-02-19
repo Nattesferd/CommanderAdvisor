@@ -1,6 +1,10 @@
 // Serverless endpoint (Vercel/Netlify-compatible) - calls OpenAI
 import type { IncomingMessage, ServerResponse } from 'http'
 
+export const config = {
+  runtime: 'nodejs18.x',
+}
+
 type Body = {
   commanderName: string
   commanderColors: string[]
@@ -45,6 +49,10 @@ export default async function handler(
     return json(500, { error: 'OPENAI_API_KEY mancante nel backend' })
   }
 
+  if (!body?.commanderName) {
+    return json(400, { error: 'Missing commanderName' })
+  }
+
   const prompt = [
     `Sei un deckbuilder esperto di Commander. Genera una lista di 100 carte (1 comandante + 99 non-commander) per ${body.commanderName}.`,
     body.commanderColors.length
@@ -79,7 +87,7 @@ export default async function handler(
     const text = data.choices?.[0]?.message?.content ?? ''
     return json(200, { deck: text })
   } catch (err) {
-    console.error(err)
-    return json(500, { error: 'Unexpected backend error' })
+    console.error('generate-deck error', err)
+    return json(500, { error: 'Unexpected backend error', detail: (err as Error).message })
   }
 }
