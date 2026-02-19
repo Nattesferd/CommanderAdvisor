@@ -151,7 +151,12 @@ function App() {
   const [swapSuggestions, setSwapSuggestions] = useState<
     { role: Role; needed: number; candidates: ScryfallCard[] }[]
   >([])
-  const apiBase = import.meta.env.VITE_API_BASE ?? ''
+  const apiBase = useMemo(() => {
+    const envBase = import.meta.env.VITE_API_BASE as string | undefined
+    if (envBase && envBase.trim().length) return envBase.trim()
+    if (import.meta.env.PROD) return window.location.origin
+    return ''
+  }, [])
 
   const colorIdentityLabel = useMemo(() => {
     if (!commander) return 'Colore: -'
@@ -835,6 +840,12 @@ function ManaIcons({ cost }: { cost?: string }) {
 
       // Call backend LLM to rerank / suggest replacements
       try {
+        if (!apiBase) {
+          setLlmNote(
+            'Backend non configurato in locale. Imposta VITE_API_BASE (es. https://<deploy>.vercel.app) oppure avvia vercel dev e usa http://localhost:3000',
+          )
+          throw new Error('apiBase not set')
+        }
         const poolSnippet = decklist
           .slice(0, 60)
           .map(
@@ -1036,9 +1047,9 @@ function ManaIcons({ cost }: { cost?: string }) {
                     placeholder="Es. Atraxa, Alela, Korvold..."
                     className="flex-1 min-w-[240px] glass rounded-xl px-3 py-2 bg-slate-900/70 border border-white/15 focus:border-emerald-300/60"
                   />
-                  <div className="glass rounded-xl px-3 py-2 text-sm border border-white/15 bg-slate-900/70 flex items-center gap-2 overflow-x-auto">
+                  <div className="glass rounded-xl px-3 py-2 text-sm border border-white/15 bg-slate-900/70 flex items-center gap-2 flex-wrap">
                     <span className="text-slate-300 whitespace-nowrap">Colori:</span>
-                    <div className="flex gap-1">
+                    <div className="flex gap-1 flex-wrap max-h-24 overflow-y-auto">
                       {colorOptions.map((opt) => (
                         <button
                           key={opt.value}
@@ -1052,7 +1063,7 @@ function ManaIcons({ cost }: { cost?: string }) {
                           {opt.symbols.map((s) => (
                             <img
                               key={s}
-                              src={`https://svgs.scryfall.io/card-symbols/${s}.svg`}
+                              src={`https://svgs.scryfall.io/card-symbols/${s.toLowerCase()}.svg`}
                               alt={s}
                               className="inline h-4 w-4 align-text-bottom mr-0.5"
                             />
