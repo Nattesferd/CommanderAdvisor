@@ -1,5 +1,5 @@
-// Serverless endpoint (Vercel/Netlify-compatible) - placeholder that calls OpenAI
-import type { VercelRequest, VercelResponse } from '@vercel/node'
+// Serverless endpoint (Vercel/Netlify-compatible) - calls OpenAI
+import type { IncomingMessage, ServerResponse } from 'http'
 
 type Body = {
   commanderName: string
@@ -10,15 +10,24 @@ type Body = {
   poolSnippet?: string
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(
+  req: IncomingMessage & { body?: unknown; method?: string },
+  res: ServerResponse,
+) {
+  const json = (code: number, body: any) => {
+    res.statusCode = code
+    res.setHeader('Content-Type', 'application/json')
+    res.end(JSON.stringify(body))
+  }
+
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' })
+    return json(405, { error: 'Method not allowed' })
   }
 
   const body = req.body as Body
   const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) {
-    return res.status(500).json({ error: 'OPENAI_API_KEY mancante nel backend' })
+    return json(500, { error: 'OPENAI_API_KEY mancante nel backend' })
   }
 
   const prompt = [
@@ -27,8 +36,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ? `Rispetta identità di colore: ${body.commanderColors.join(', ')}.`
       : 'Comandante incolore.',
     `Archetipo: ${body.archetype}. Bracket: ${body.bracket}. Budget: ${body.priceRange}.`,
-    'Bilancia terre/ramp/removal/draw/protezioni, evita banlist, niente duplicati non permessi.',
-    'Restituisci solo elenco numerato di carte (nome e ruolo breve).',
+    'Bilancia terre (33-38), ramp (8-12), removal (8-12), draw (8-12), protezioni/interaction (6-10), resto value/wincon. Evita banlist, niente duplicati non permessi.',
+    'Restituisci JSON compatto: { "cards": [ { "name": "...", "role": "ramp|draw|removal|protection|wincon|land|value" } ] } con esattamente 99 non-commander. Non aggiungere testo extra.',
     body.poolSnippet ? `Pool Scryfall/EDH a supporto:\n${body.poolSnippet}` : '',
   ].join('\n')
 
@@ -42,20 +51,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       body: JSON.stringify({
         model: 'gpt-4o-mini',
         messages: [{ role: 'user', content: prompt }],
-        temperature: 0.7,
+        temperature: 0.4,
       }),
     })
 
     if (!completion.ok) {
       const text = await completion.text()
-      return res.status(500).json({ error: 'LLM error', detail: text })
+      return json(500, { error: 'LLM error', detail: text })
     }
 
     const data = await completion.json()
     const text = data.choices?.[0]?.message?.content ?? ''
-    return res.status(200).json({ deck: text })
+    return json(200, { deck: text })
   } catch (err) {
     console.error(err)
-    return res.status(500).json({ error: 'Unexpected backend error' })
+    return json(500, { error: 'Unexpected backend error' })
   }
 }

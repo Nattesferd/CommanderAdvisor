@@ -126,6 +126,8 @@ const colorOptions = [
   { value: 'c', label: 'Incolore', symbols: ['C'] },
 ]
 
+type Role = 'ramp' | 'draw' | 'removal' | 'protection' | 'wincon' | 'land' | 'value'
+
 function App() {
   const [commander, setCommander] = useState<ScryfallCard | null>(null)
   const [suggestions, setSuggestions] = useState<SuggestionsState>(initialSuggestions)
@@ -142,6 +144,10 @@ function App() {
   const [colorFilter, setColorFilter] = useState<string>('any')
   const [error, setError] = useState<string | null>(null)
   const [llmNote, setLlmNote] = useState<string | null>(null)
+  const [roleSummary, setRoleSummary] = useState<{
+    target: Record<Role, number>
+    current: Record<Role, number>
+  } | null>(null)
 
   const colorIdentityLabel = useMemo(() => {
     if (!commander) return 'Colore: -'
@@ -172,6 +178,7 @@ function App() {
     setSuggestions(initialSuggestions)
     setDeck([])
     setDeckSections([])
+    setRoleSummary(null)
 
     try {
       const colorClause =
@@ -413,10 +420,45 @@ function totalBudget(range: string) {
   }
 }
 
-function priceLabel(range: string) {
-  const found = priceRanges.find((p) => p.value === range)
-  return found ? found.label : range
-}
+  function priceLabel(range: string) {
+    const found = priceRanges.find((p) => p.value === range)
+    return found ? found.label : range
+  }
+
+  function exportText(format: 'txt' | 'csv' | 'moxfield') {
+    if (!commander) return
+    const lines: string[] = []
+    if (format === 'moxfield') {
+      lines.push(`1 ${commander.name} *CMDR*`)
+    } else {
+      lines.push(`# Commander Advisor list for ${commander.name}`)
+      lines.push(`# Archetype: ${archetype}, Bracket: ${bracket}, Budget: ${priceRange}`)
+      lines.push(`1 ${commander.name} (Commander)`)
+    }
+    deckSections.forEach((section) => {
+      section.entries.forEach((entry) => {
+        const line = `${entry.qty} ${entry.card.name}`
+        lines.push(line)
+      })
+    })
+    const blob =
+      format === 'csv'
+        ? new Blob([lines.map((l) => `"${l.replace(/"/g, '""')}"`).join('\n')], {
+            type: 'text/csv',
+          })
+        : new Blob([lines.join('\n')], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download =
+      format === 'csv'
+        ? 'commander-advisor.csv'
+        : format === 'moxfield'
+          ? 'commander-advisor-moxfield.txt'
+          : 'commander-advisor.txt'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
 function landColorScore(card: ScryfallCard, commanderColors: string[]) {
   if (!isType(card, 'land')) return 0
@@ -435,6 +477,26 @@ function isForbidden(card: ScryfallCard, bracket: string) {
   const noTutors = text.includes('search your library') || text.includes('tutor')
   const noMld = text.includes('destroy all lands') || text.includes('sacrifice all lands')
   return noTurns || noTutors || noMld
+}
+
+function classifyRole(card: ScryfallCard): Role {
+  if (isType(card, 'land')) return 'land'
+  const text = `${card.type_line} ${card.oracle_text ?? ''}`.toLowerCase()
+  if (text.includes('add {') || text.includes('search your library for a land') || text.includes('mana pool'))
+    return 'ramp'
+  if (text.includes('draw a card') || text.includes('draw two cards') || text.includes('each player draws'))
+    return 'draw'
+  if (
+    text.includes('destroy target') ||
+    text.includes('exile target') ||
+    text.includes('counter target') ||
+    text.includes('fight target') ||
+    text.includes('sacrifice target')
+  )
+    return 'removal'
+  if (text.includes('hexproof') || text.includes('indestructible') || text.includes('phase out') || text.includes('counter target spell'))
+    return 'protection'
+  return 'value'
 }
 
 function ManaIcons({ cost }: { cost?: string }) {
@@ -458,16 +520,16 @@ function ManaIcons({ cost }: { cost?: string }) {
   )
 }
 
-function groupDeck(list: ScryfallCard[]): DeckSection[] {
-  const sections: { label: string; match: (c: ScryfallCard) => boolean }[] = [
-    { label: 'Creature', match: (c) => isType(c, 'creature') },
-    { label: 'Artifacts', match: (c) => isType(c, 'artifact') && !isType(c, 'creature') },
-    { label: 'Enchantments', match: (c) => isType(c, 'enchantment') },
-    { label: 'Instant', match: (c) => isType(c, 'instant') },
-    { label: 'Sorcery', match: (c) => isType(c, 'sorcery') },
-    { label: 'Planeswalker', match: (c) => isType(c, 'planeswalker') },
-    { label: 'Lands', match: (c) => isType(c, 'land') },
-  ]
+  function groupDeck(list: ScryfallCard[]): DeckSection[] {
+    const sections: { label: string; match: (c: ScryfallCard) => boolean }[] = [
+      { label: 'Creature', match: (c) => isType(c, 'creature') },
+      { label: 'Artifacts', match: (c) => isType(c, 'artifact') && !isType(c, 'creature') },
+      { label: 'Enchantments', match: (c) => isType(c, 'enchantment') },
+      { label: 'Instant', match: (c) => isType(c, 'instant') },
+      { label: 'Sorcery', match: (c) => isType(c, 'sorcery') },
+      { label: 'Planeswalker', match: (c) => isType(c, 'planeswalker') },
+      { label: 'Lands', match: (c) => isType(c, 'land') },
+    ]
 
   return sections
     .map((section) => {
@@ -510,6 +572,16 @@ function groupDeck(list: ScryfallCard[]): DeckSection[] {
       }
 
       const targets = targetsByBracket[bracket] ?? targetsByBracket['3']
+      const roleTargets: Record<Role, number> =
+        bracket === '5'
+          ? { ramp: 12, draw: 12, removal: 12, protection: 10, wincon: 8, land: targets.lands, value: 99 }
+          : bracket === '4'
+            ? { ramp: 11, draw: 11, removal: 11, protection: 9, wincon: 8, land: targets.lands, value: 99 }
+            : bracket === '3'
+              ? { ramp: 10, draw: 10, removal: 10, protection: 8, wincon: 6, land: targets.lands, value: 99 }
+              : bracket === '2'
+                ? { ramp: 9, draw: 9, removal: 9, protection: 7, wincon: 5, land: targets.lands, value: 99 }
+                : { ramp: 8, draw: 8, removal: 8, protection: 6, wincon: 4, land: targets.lands, value: 99 }
 
       const colorParam = (commander.color_identity.length
         ? commander.color_identity
@@ -543,24 +615,34 @@ function groupDeck(list: ScryfallCard[]): DeckSection[] {
       const decklist: ScryfallCard[] = []
       let landCount = 0
       let totalCost = 0
+      const roleCount: Record<Role, number> = {
+        ramp: 0,
+        draw: 0,
+        removal: 0,
+        protection: 0,
+        wincon: 0,
+        land: 0,
+        value: 0,
+      }
 
       let expensiveCount = 0
       const withinBudget = (card: ScryfallCard) => {
         const price = parseFloat(card.prices?.usd ?? card.prices?.eur ?? '0')
         if (!isFinite(budgetTotal)) return true
-        const safePrice = Number.isNaN(price) ? 0 : price
-        const totalOk = totalCost + safePrice <= budgetTotal
-        if (!totalOk) return false
-        if (!isFinite(priceCap)) return true
-        if (safePrice <= priceCap) return true
-        if (safePrice <= priceCap * 4 && expensiveCount < 5) {
-          expensiveCount += 1
-          return true
-        }
-        return false
-      }
+    const safePrice = Number.isNaN(price) ? 0 : price
+    // allow a handful of expensive cards if overall budget allows
+    const totalOk = totalCost + safePrice <= budgetTotal
+    if (!totalOk) return false
+    if (!isFinite(priceCap)) return true
+    if (safePrice <= priceCap) return true
+    if (safePrice <= priceCap * 6 && expensiveCount < 7) {
+      expensiveCount += 1
+      return true
+    }
+    return false
+  }
 
-      const pick = (predicate: (c: ScryfallCard) => boolean, needed: number) => {
+      const pick = (predicate: (c: ScryfallCard) => boolean, needed: number, roleHint?: Role) => {
         for (const card of source) {
           if (decklist.length >= 99) break
           if (used.has(card.name)) continue
@@ -572,16 +654,18 @@ function groupDeck(list: ScryfallCard[]): DeckSection[] {
           const price = parseFloat(card.prices?.usd ?? card.prices?.eur ?? '0')
           if (!Number.isNaN(price)) totalCost += price
           if (isType(card, 'land')) landCount += 1
+          const r = roleHint ?? classifyRole(card)
+          roleCount[r] += 1
           if (--needed <= 0) break
         }
       }
 
-      pick((c) => isType(c, 'creature'), targets.creatures)
-      pick((c) => isType(c, 'artifact') && !isType(c, 'creature'), targets.artifacts)
-      pick((c) => isType(c, 'enchantment'), targets.enchantments)
-      pick((c) => isType(c, 'instant'), targets.instants)
-      pick((c) => isType(c, 'sorcery'), targets.sorceries)
-      pick((c) => isType(c, 'planeswalker'), targets.planeswalkers)
+      pick((c) => isType(c, 'creature'), targets.creatures, 'value')
+      pick((c) => isType(c, 'artifact') && !isType(c, 'creature'), targets.artifacts, 'value')
+      pick((c) => isType(c, 'enchantment'), targets.enchantments, 'value')
+      pick((c) => isType(c, 'instant'), targets.instants, 'value')
+      pick((c) => isType(c, 'sorcery'), targets.sorceries, 'value')
+      pick((c) => isType(c, 'planeswalker'), targets.planeswalkers, 'value')
 
       // Lands: keep some nonbasics first
       const landTarget = targets.lands
@@ -645,6 +729,7 @@ function groupDeck(list: ScryfallCard[]): DeckSection[] {
       basicsToAdd.slice(0, basicsNeeded).forEach((c) => {
         decklist.push(c)
         landCount += 1
+        roleCount.land += 1
         const price = parseFloat(c.prices?.usd ?? c.prices?.eur ?? '0')
         if (!Number.isNaN(price)) totalCost += price
       })
@@ -668,11 +753,28 @@ function groupDeck(list: ScryfallCard[]): DeckSection[] {
           if (decklist.length >= 99) break
           used.add(card.name)
           decklist.push(card)
+          const role = classifyRole(card)
+          roleCount[role] = (roleCount[role] ?? 0) + 1
         }
       }
 
-      setDeck(decklist.slice(0, 99))
-      setDeckSections(groupDeck(decklist.slice(0, 99)))
+      // ensure role quotas if possible
+      const needRole = (role: Role) => Math.max(0, (roleTargets[role] ?? 0) - roleCount[role])
+      const missingRoles: Role[] = ['ramp', 'draw', 'removal', 'protection']
+      for (const role of missingRoles) {
+        const need = needRole(role)
+        if (need <= 0) continue
+        pick(
+          (c) => classifyRole(c) === role && !isType(c, 'land'),
+          need,
+          role,
+        )
+      }
+
+      const finalList = decklist.slice(0, 99)
+      setRoleSummary({ target: roleTargets, current: roleCount })
+      setDeck(finalList)
+      setDeckSections(groupDeck(finalList))
       setPreviewCard(commander)
 
       // Call backend LLM to rerank / suggest replacements
@@ -702,29 +804,55 @@ function groupDeck(list: ScryfallCard[]): DeckSection[] {
           const data = await resp.json()
           if (data.deck) {
             setLlmNote(data.deck)
-            const lines: string[] = data.deck
-              .split('\n')
-              .map((l: string) => l.trim())
-              .filter((l: string) => l.length > 0)
-            const nameFromLine = (line: string) => {
-              const cleaned = line.replace(/^\d+[\).\s-]*/, '')
-              return cleaned.split('—')[0].split('-')[0].trim()
+            try {
+              const parsed = JSON.parse(data.deck)
+              if (parsed?.cards?.length) {
+                const nameMap = new Map(decklist.map((c) => [c.name.toLowerCase(), c]))
+                const reranked: ScryfallCard[] = []
+                for (const item of parsed.cards as { name: string }[]) {
+                  const card = nameMap.get(item.name.toLowerCase())
+                  if (card && !reranked.find((c) => c.name === card.name)) {
+                    reranked.push(card)
+                  }
+                }
+                const completed = [...reranked, ...decklist.filter((c) => !reranked.includes(c))].slice(
+                  0,
+                  99,
+                )
+                setDeck(completed)
+                setDeckSections(groupDeck(completed))
+              }
+            } catch (e) {
+              // fallback to text parse below
             }
-            const nameMap = new Map(decklist.map((c) => [c.name.toLowerCase(), c]))
-            const reranked: ScryfallCard[] = []
-            for (const l of lines) {
-              const n = nameFromLine(l).toLowerCase()
-              const card = nameMap.get(n)
-              if (card && !reranked.find((c) => c.name === card.name)) {
-                reranked.push(card)
+
+            if (!llmNote && data.deck) {
+              const lines: string[] = data.deck
+                .split('\n')
+                .map((l: string) => l.trim())
+                .filter((l: string) => l.length > 0)
+              const nameFromLine = (line: string) => {
+                const cleaned = line.replace(/^\d+[\).\s-]*/, '')
+                return cleaned.split('—')[0].split('-')[0].trim()
+              }
+              const nameMap = new Map(decklist.map((c) => [c.name.toLowerCase(), c]))
+              const reranked: ScryfallCard[] = []
+              for (const l of lines) {
+                const n = nameFromLine(l).toLowerCase()
+                const card = nameMap.get(n)
+                if (card && !reranked.find((c) => c.name === card.name)) {
+                  reranked.push(card)
+                }
+              }
+              if (reranked.length) {
+                const completed = [...reranked, ...decklist.filter((c) => !reranked.includes(c))].slice(
+                  0,
+                  99,
+                )
+                setDeck(completed)
+                setDeckSections(groupDeck(completed))
               }
             }
-            const completed = [...reranked, ...decklist.filter((c) => !reranked.includes(c))].slice(
-              0,
-              99,
-            )
-            setDeck(completed)
-            setDeckSections(groupDeck(completed))
           }
         } else {
           setLlmNote('LLM non disponibile, uso lista locale.')
@@ -852,19 +980,31 @@ function groupDeck(list: ScryfallCard[]): DeckSection[] {
                     placeholder="Es. Atraxa, Alela, Korvold..."
                     className="flex-1 min-w-[240px] glass rounded-xl px-3 py-2 bg-slate-900/70 border border-white/15 focus:border-emerald-300/60"
                   />
-                  <div className="glass rounded-xl px-3 py-2 text-sm border border-white/15 bg-slate-900/70 flex items-center gap-2">
-                    <label className="text-slate-300">Colori:</label>
-                    <select
-                      value={colorFilter}
-                      onChange={(e) => setColorFilter(e.target.value)}
-                      className="bg-transparent focus:outline-none"
-                    >
+                  <div className="glass rounded-xl px-3 py-2 text-sm border border-white/15 bg-slate-900/70 flex items-center gap-2 overflow-x-auto">
+                    <span className="text-slate-300 whitespace-nowrap">Colori:</span>
+                    <div className="flex gap-1">
                       {colorOptions.map((opt) => (
-                        <option key={opt.value} value={opt.value}>
-                          {opt.symbols.join('')} {opt.label}
-                        </option>
+                        <button
+                          key={opt.value}
+                          onClick={() => setColorFilter(opt.value)}
+                          className={`px-2 py-1 rounded-lg border text-xs whitespace-nowrap ${
+                            colorFilter === opt.value
+                              ? 'border-emerald-300 bg-emerald-500/20 text-emerald-100'
+                              : 'border-white/15 text-slate-200 hover:border-emerald-200/50'
+                          }`}
+                        >
+                          {opt.symbols.map((s) => (
+                            <img
+                              key={s}
+                              src={`https://svgs.scryfall.io/card-symbols/${s}.svg`}
+                              alt={s}
+                              className="inline h-4 w-4 align-text-bottom mr-0.5"
+                            />
+                          ))}
+                          {opt.label}
+                        </button>
                       ))}
-                    </select>
+                    </div>
                   </div>
                 </div>
                 {commanderResults.length > 0 && (
@@ -1150,6 +1290,52 @@ function groupDeck(list: ScryfallCard[]): DeckSection[] {
 
           {deckLoading && (
             <div className="glass rounded-2xl p-4 text-slate-200">Sto componendo la lista...</div>
+          )}
+
+          {!deckLoading && roleSummary && (
+            <div className="glass rounded-2xl p-4 border border-white/10">
+              <p className="text-sm font-semibold mb-2">Suggerimenti IA (delta ruoli)</p>
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                {(['ramp', 'draw', 'removal', 'protection', 'wincon'] as Role[]).map((r) => {
+                  const cur = roleSummary.current[r] ?? 0
+                  const tgt = roleSummary.target[r] ?? 0
+                  const diff = tgt - cur
+                  const color =
+                    diff > 0 ? 'text-amber-200 bg-amber-400/10 border-amber-400/30' : 'text-emerald-200 bg-emerald-400/10 border-emerald-400/30'
+                  return (
+                    <div key={r} className={`glass rounded-xl px-3 py-2 border ${color}`}>
+                      <div className="flex justify-between text-sm font-semibold capitalize">
+                        <span>{r}</span>
+                        <span>
+                          {cur}/{tgt || '—'}
+                        </span>
+                      </div>
+                      {diff > 0 ? <p className="text-xs opacity-80">Manca {diff} slot</p> : <p className="text-xs opacity-80">OK</p>}
+                    </div>
+                  )
+                })}
+              </div>
+              <div className="flex flex-wrap gap-2 mt-3 text-sm">
+                <button
+                  onClick={() => exportText('txt')}
+                  className="px-3 py-2 rounded-lg glass border border-white/20"
+                >
+                  Export TXT
+                </button>
+                <button
+                  onClick={() => exportText('csv')}
+                  className="px-3 py-2 rounded-lg glass border border-white/20"
+                >
+                  Export CSV
+                </button>
+                <button
+                  onClick={() => exportText('moxfield')}
+                  className="px-3 py-2 rounded-lg glass border border-white/20"
+                >
+                  Export Moxfield
+                </button>
+              </div>
+            </div>
           )}
 
           {!deckLoading && deck.length === 0 && (
