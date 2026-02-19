@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+﻿import { useEffect, useMemo, useState } from 'react'
 
 type ScryfallCard = {
   id: string
@@ -86,44 +86,68 @@ const priceRanges = [
   { value: 'nobudget', label: 'Nessun budget' },
 ]
 
-const colorOptions = [
-  { value: 'any', label: 'Qualsiasi identità', symbols: [] },
-  { value: 'w', label: 'Mono Bianco', symbols: ['W'] },
-  { value: 'u', label: 'Mono Blu', symbols: ['U'] },
-  { value: 'b', label: 'Mono Nero', symbols: ['B'] },
-  { value: 'r', label: 'Mono Rosso', symbols: ['R'] },
-  { value: 'g', label: 'Mono Verde', symbols: ['G'] },
-  // Guild (2c)
-  { value: 'wu', label: 'Azorius (WU)', symbols: ['W', 'U'] },
-  { value: 'ub', label: 'Dimir (UB)', symbols: ['U', 'B'] },
-  { value: 'br', label: 'Rakdos (BR)', symbols: ['B', 'R'] },
-  { value: 'rg', label: 'Gruul (RG)', symbols: ['R', 'G'] },
-  { value: 'gw', label: 'Selesnya (GW)', symbols: ['G', 'W'] },
-  { value: 'wb', label: 'Orzhov (WB)', symbols: ['W', 'B'] },
-  { value: 'ur', label: 'Izzet (UR)', symbols: ['U', 'R'] },
-  { value: 'bg', label: 'Golgari (BG)', symbols: ['B', 'G'] },
-  { value: 'rw', label: 'Boros (RW)', symbols: ['R', 'W'] },
-  { value: 'gu', label: 'Simic (GU)', symbols: ['G', 'U'] },
-  // Shard / Wedge (3c)
-  { value: 'wub', label: 'Esper (WUB)', symbols: ['W', 'U', 'B'] },
-  { value: 'ubr', label: 'Grixis (UBR)', symbols: ['U', 'B', 'R'] },
-  { value: 'brg', label: 'Jund (BRG)', symbols: ['B', 'R', 'G'] },
-  { value: 'rgw', label: 'Naya (RGW)', symbols: ['R', 'G', 'W'] },
-  { value: 'gwu', label: 'Bant (GWU)', symbols: ['G', 'W', 'U'] },
-  { value: 'wbg', label: 'Abzan (WBG)', symbols: ['W', 'B', 'G'] },
-  { value: 'urw', label: 'Jeskai (URW)', symbols: ['U', 'R', 'W'] },
-  { value: 'bgu', label: 'Sultai (BGU)', symbols: ['B', 'G', 'U'] },
-  { value: 'rwb', label: 'Mardu (RWB)', symbols: ['R', 'W', 'B'] },
-  { value: 'gwr', label: 'Temur (GWR)', symbols: ['G', 'W', 'R'] },
-  // 4c (sans)
-  { value: 'wubr', label: 'Sans Green (WUBR)', symbols: ['W', 'U', 'B', 'R'] },
-  { value: 'wubg', label: 'Sans Red (WUBG)', symbols: ['W', 'U', 'B', 'G'] },
-  { value: 'wurg', label: 'Sans Black (WURG)', symbols: ['W', 'U', 'R', 'G'] },
-  { value: 'wbrg', label: 'Sans Blue (WBRG)', symbols: ['W', 'B', 'R', 'G'] },
-  { value: 'ubrg', label: 'Sans White (UBRG)', symbols: ['U', 'B', 'R', 'G'] },
-  // 5c / colorless
-  { value: 'wubrg', label: 'Cinque colori', symbols: ['W', 'U', 'B', 'R', 'G'] },
-  { value: 'c', label: 'Incolore', symbols: ['C'] },
+const colorGroups = [
+  {
+    label: 'Qualsiasi',
+    options: [{ value: 'any', label: 'Qualsiasi identità', symbols: [] }],
+  },
+  {
+    label: 'Mono colore',
+    options: [
+      { value: 'w', label: 'Mono Bianco', symbols: ['W'] },
+      { value: 'u', label: 'Mono Blu', symbols: ['U'] },
+      { value: 'b', label: 'Mono Nero', symbols: ['B'] },
+      { value: 'r', label: 'Mono Rosso', symbols: ['R'] },
+      { value: 'g', label: 'Mono Verde', symbols: ['G'] },
+    ],
+  },
+  {
+    label: 'Bicolore (Guild)',
+    options: [
+      { value: 'wu', label: 'Azorius (WU)', symbols: ['W', 'U'] },
+      { value: 'ub', label: 'Dimir (UB)', symbols: ['U', 'B'] },
+      { value: 'br', label: 'Rakdos (BR)', symbols: ['B', 'R'] },
+      { value: 'rg', label: 'Gruul (RG)', symbols: ['R', 'G'] },
+      { value: 'gw', label: 'Selesnya (GW)', symbols: ['G', 'W'] },
+      { value: 'wb', label: 'Orzhov (WB)', symbols: ['W', 'B'] },
+      { value: 'ur', label: 'Izzet (UR)', symbols: ['U', 'R'] },
+      { value: 'bg', label: 'Golgari (BG)', symbols: ['B', 'G'] },
+      { value: 'rw', label: 'Boros (RW)', symbols: ['R', 'W'] },
+      { value: 'gu', label: 'Simic (GU)', symbols: ['G', 'U'] },
+    ],
+  },
+  {
+    label: 'Tricolore (Shard / Wedge)',
+    options: [
+      { value: 'wub', label: 'Esper (WUB)', symbols: ['W', 'U', 'B'] },
+      { value: 'ubr', label: 'Grixis (UBR)', symbols: ['U', 'B', 'R'] },
+      { value: 'brg', label: 'Jund (BRG)', symbols: ['B', 'R', 'G'] },
+      { value: 'rgw', label: 'Naya (RGW)', symbols: ['R', 'G', 'W'] },
+      { value: 'gwu', label: 'Bant (GWU)', symbols: ['G', 'W', 'U'] },
+      { value: 'wbg', label: 'Abzan (WBG)', symbols: ['W', 'B', 'G'] },
+      { value: 'urw', label: 'Jeskai (URW)', symbols: ['U', 'R', 'W'] },
+      { value: 'bgu', label: 'Sultai (BGU)', symbols: ['B', 'G', 'U'] },
+      { value: 'rwb', label: 'Mardu (RWB)', symbols: ['R', 'W', 'B'] },
+      { value: 'gwr', label: 'Temur (GWR)', symbols: ['G', 'W', 'R'] },
+    ],
+  },
+  {
+    label: 'Quadracolore (Sans)',
+    options: [
+      { value: 'ubrg', label: 'Non-White – Yore-Tiller (UBRG)', symbols: ['U', 'B', 'R', 'G'] },
+      { value: 'brgw', label: 'Non-Blue – Dune-Brood (BRGW)', symbols: ['B', 'R', 'G', 'W'] },
+      { value: 'rgwu', label: 'Non-Black – Ink-Treader (RGWU)', symbols: ['R', 'G', 'W', 'U'] },
+      { value: 'gwub', label: 'Non-Red – Witch-Maw (GWUB)', symbols: ['G', 'W', 'U', 'B'] },
+      { value: 'wubr', label: 'Non-Green – Glint-Eye (WUBR)', symbols: ['W', 'U', 'B', 'R'] },
+    ],
+  },
+  {
+    label: 'Cinque / Incolore',
+    options: [
+      { value: 'wubrg', label: 'Cinque colori', symbols: ['W', 'U', 'B', 'R', 'G'] },
+      { value: 'c', label: 'Incolore', symbols: ['C'] },
+    ],
+  },
 ]
 
 type Role = 'ramp' | 'draw' | 'removal' | 'protection' | 'wincon' | 'land' | 'value'
@@ -143,7 +167,6 @@ function App() {
   const [commanderResults, setCommanderResults] = useState<ScryfallCard[]>([])
   const [colorFilter, setColorFilter] = useState<string>('any')
   const [error, setError] = useState<string | null>(null)
-  const [llmNote, setLlmNote] = useState<string | null>(null)
   const [roleSummary, setRoleSummary] = useState<{
     target: Record<Role, number>
     current: Record<Role, number>
@@ -151,16 +174,6 @@ function App() {
   const [swapSuggestions, setSwapSuggestions] = useState<
     { role: Role; needed: number; candidates: ScryfallCard[] }[]
   >([])
-  const apiBase = useMemo(() => {
-    const envBase = (import.meta.env.VITE_API_BASE as string | undefined)?.trim()
-    const base =
-      envBase && envBase.length
-        ? envBase
-        : import.meta.env.PROD
-          ? window.location.origin
-          : ''
-    return base.endsWith('/') ? base.slice(0, -1) : base
-  }, [])
 
   const colorIdentityLabel = useMemo(() => {
     if (!commander) return 'Colore: -'
@@ -433,6 +446,57 @@ function totalBudget(range: string) {
   }
 }
 
+function isBasicLandCard(card: ScryfallCard) {
+  const line = card.type_line.toLowerCase()
+  return line.includes('basic land')
+}
+
+function cardPrice(card: ScryfallCard): number | null {
+  const raw = [card.prices?.usd, card.prices?.usd_foil, card.prices?.eur]
+    .map((p) => (p ? parseFloat(p) : NaN))
+    .filter((n) => !Number.isNaN(n) && n > 0)
+  if (raw.length) return Math.min(...raw)
+  if (isBasicLandCard(card)) return 0
+  return null
+}
+
+function cheapestPriceLabel(card: ScryfallCard) {
+  const value = cardPrice(card)
+  if (value === null) return ''
+  return value >= 1 ? `$${value.toFixed(2)}` : `$${value.toFixed(3)}`
+}
+
+const gameChangerNames = new Set(
+  [
+    'mana crypt',
+    'mana vault',
+    'jeweled lotus',
+    'dockside extortionist',
+    'fierce guardianship',
+    'force of will',
+    'timetwister',
+    'time warp',
+    'expropriate',
+    'cyclonic rift',
+    'urza\'s saga',
+    'gai\'s cradle',
+  ].map((n) => n.toLowerCase()),
+)
+
+function isGameChanger(card: ScryfallCard) {
+  const name = card.name.toLowerCase()
+  if (gameChangerNames.has(name)) return true
+  const text = (card.oracle_text ?? '').toLowerCase()
+  return (
+    text.includes('extra turn') ||
+    text.includes('win the game') ||
+    text.includes('infinite') ||
+    text.includes('tutor') ||
+    text.includes('add three') ||
+    text.includes('add four')
+  )
+}
+
   function priceLabel(range: string) {
     const found = priceRanges.find((p) => p.value === range)
     return found ? found.label : range
@@ -604,7 +668,6 @@ function ManaIcons({ cost }: { cost?: string }) {
     }
     setDeckLoading(true)
     setError(null)
-    setLlmNote(null)
     setDeck([])
     setDeckSections([])
 
@@ -659,11 +722,16 @@ function ManaIcons({ cost }: { cost?: string }) {
       }
 
       const source = Array.from(uniqueByName.values())
+        .filter((card) => cardPrice(card) !== null)
+        .sort((a, b) => (cardPrice(a) ?? Infinity) - (cardPrice(b) ?? Infinity))
 
       const used = new Set<string>()
       const decklist: ScryfallCard[] = []
       let landCount = 0
       let totalCost = 0
+      let remainingBudget = budgetTotal
+      const gameChangerCap = { 1: 0, 2: 1, 3: 3, 4: 6, 5: 99 }[bracket] ?? 3
+      let gameChangerCount = 0
       const roleCount: Record<Role, number> = {
         ramp: 0,
         draw: 0,
@@ -674,34 +742,28 @@ function ManaIcons({ cost }: { cost?: string }) {
         value: 0,
       }
 
-      let expensiveCount = 0
       const withinBudget = (card: ScryfallCard) => {
-        const price = parseFloat(card.prices?.usd ?? card.prices?.eur ?? '0')
-        if (!isFinite(budgetTotal)) return true
-    const safePrice = Number.isNaN(price) ? 0 : price
-    // allow a handful of expensive cards if overall budget allows
-    const totalOk = totalCost + safePrice <= budgetTotal
-    if (!totalOk) return false
-    if (!isFinite(priceCap)) return true
-    if (safePrice <= priceCap) return true
-    if (safePrice <= priceCap * 6 && expensiveCount < 7) {
-      expensiveCount += 1
-      return true
-    }
-    return false
-  }
+        const price = cardPrice(card)
+        if (price === null) return false
+        if (isFinite(priceCap) && price > priceCap) return false
+        if (!isFinite(remainingBudget)) return true
+        return price <= remainingBudget + 1e-6
+      }
 
       const pick = (predicate: (c: ScryfallCard) => boolean, needed: number, roleHint?: Role) => {
         for (const card of source) {
           if (decklist.length >= 99) break
           if (used.has(card.name)) continue
+          if (isGameChanger(card) && gameChangerCount >= gameChangerCap) continue
           if (isForbidden(card, bracket)) continue
           if (!predicate(card)) continue
           if (!withinBudget(card)) continue
           used.add(card.name)
           decklist.push(card)
-          const price = parseFloat(card.prices?.usd ?? card.prices?.eur ?? '0')
-          if (!Number.isNaN(price)) totalCost += price
+          const price = cardPrice(card) ?? 0
+          if (isFinite(remainingBudget)) remainingBudget = Math.max(0, remainingBudget - price)
+          totalCost += price
+          if (isGameChanger(card)) gameChangerCount += 1
           if (isType(card, 'land')) landCount += 1
           const r = roleHint ?? classifyRole(card)
           roleCount[r] += 1
@@ -730,11 +792,13 @@ function ManaIcons({ cost }: { cost?: string }) {
         if (decklist.length >= 99 || landCount >= landTarget - plannedBasics) break
         if (used.has(land.name)) continue
         if (!withinBudget(land)) continue
+        const price = cardPrice(land)
+        if (price === null) continue
         used.add(land.name)
         decklist.push(land)
         landCount += 1
-        const price = parseFloat(land.prices?.usd ?? land.prices?.eur ?? '0')
-        if (!Number.isNaN(price)) totalCost += price
+        if (isFinite(remainingBudget)) remainingBudget = Math.max(0, remainingBudget - price)
+        totalCost += price
       }
 
       // Fetch basic lands as needed
@@ -779,8 +843,9 @@ function ManaIcons({ cost }: { cost?: string }) {
         decklist.push(c)
         landCount += 1
         roleCount.land += 1
-        const price = parseFloat(c.prices?.usd ?? c.prices?.eur ?? '0')
-        if (!Number.isNaN(price)) totalCost += price
+        const price = cardPrice(c) ?? 0
+        if (isFinite(remainingBudget)) remainingBudget = Math.max(0, remainingBudget - price)
+        totalCost += price
       })
 
       // Fill any leftover slots with best remaining cards respecting budget
@@ -800,8 +865,15 @@ function ManaIcons({ cost }: { cost?: string }) {
         )
         for (const card of fallbackCards) {
           if (decklist.length >= 99) break
+          if (!withinBudget(card)) continue
+          if (isGameChanger(card) && gameChangerCount >= gameChangerCap) continue
+          const price = cardPrice(card)
+          if (price === null) continue
           used.add(card.name)
           decklist.push(card)
+          if (isFinite(remainingBudget)) remainingBudget = Math.max(0, remainingBudget - price)
+          totalCost += price
+          if (isGameChanger(card)) gameChangerCount += 1
           const role = classifyRole(card)
           roleCount[role] = (roleCount[role] ?? 0) + 1
         }
@@ -841,97 +913,6 @@ function ManaIcons({ cost }: { cost?: string }) {
       setDeck(finalList)
       setDeckSections(groupDeck(finalList))
       setPreviewCard(commander)
-
-      // Call backend LLM to rerank / suggest replacements
-      try {
-        if (!apiBase) {
-          setLlmNote(
-            'Backend non configurato in locale. Imposta VITE_API_BASE (es. https://<deploy>.vercel.app) oppure avvia vercel dev e usa http://localhost:3000',
-          )
-          throw new Error('apiBase not set')
-        }
-        const poolSnippet = decklist
-          .slice(0, 60)
-          .map(
-            (c, i) =>
-              `${i + 1}. ${c.name} — ${c.type_line}${
-                c.prices?.usd ? ` ($${c.prices.usd})` : ''
-              }`,
-          )
-          .join('\n')
-        const resp = await fetch(`${apiBase || ''}/api/generate-deck`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            commanderName: commander.name,
-            commanderColors: commander.color_identity,
-            archetype,
-            bracket,
-            priceRange,
-            poolSnippet,
-          }),
-        })
-        if (resp.ok) {
-          const data = await resp.json()
-          if (data.deck) {
-            setLlmNote(data.deck)
-            try {
-              const parsed = JSON.parse(data.deck)
-              if (parsed?.cards?.length) {
-                const nameMap = new Map(decklist.map((c) => [c.name.toLowerCase(), c]))
-                const reranked: ScryfallCard[] = []
-                for (const item of parsed.cards as { name: string }[]) {
-                  const card = nameMap.get(item.name.toLowerCase())
-                  if (card && !reranked.find((c) => c.name === card.name)) {
-                    reranked.push(card)
-                  }
-                }
-                const completed = [...reranked, ...decklist.filter((c) => !reranked.includes(c))].slice(
-                  0,
-                  99,
-                )
-                setDeck(completed)
-                setDeckSections(groupDeck(completed))
-              }
-            } catch (e) {
-              // fallback to text parse below
-            }
-
-            if (!llmNote && data.deck) {
-              const lines: string[] = data.deck
-                .split('\n')
-                .map((l: string) => l.trim())
-                .filter((l: string) => l.length > 0)
-              const nameFromLine = (line: string) => {
-                const cleaned = line.replace(/^\d+[\).\s-]*/, '')
-                return cleaned.split('—')[0].split('-')[0].trim()
-              }
-              const nameMap = new Map(decklist.map((c) => [c.name.toLowerCase(), c]))
-              const reranked: ScryfallCard[] = []
-              for (const l of lines) {
-                const n = nameFromLine(l).toLowerCase()
-                const card = nameMap.get(n)
-                if (card && !reranked.find((c) => c.name === card.name)) {
-                  reranked.push(card)
-                }
-              }
-              if (reranked.length) {
-                const completed = [...reranked, ...decklist.filter((c) => !reranked.includes(c))].slice(
-                  0,
-                  99,
-                )
-                setDeck(completed)
-                setDeckSections(groupDeck(completed))
-              }
-            }
-          }
-        } else {
-          setLlmNote('LLM non disponibile, uso lista locale.')
-        }
-      } catch (e) {
-        console.error('LLM fallback', e)
-        setLlmNote('LLM non disponibile, uso lista locale.')
-      }
     } catch (err) {
       console.error(err)
       setError('Non sono riuscito a costruire il mazzo. Riprova tra poco.')
@@ -1020,7 +1001,7 @@ function ManaIcons({ cost }: { cost?: string }) {
                 L&apos;IA potrà raffinarsi con dati da EDHREC e valutazioni di
                 potenza per creare liste sempre più curate.
               </p>
-              <div className="flex flex-wrap gap-3">
+              <div className="flex flex-wrap gap-3 items-center">
                 <button
                   onClick={drawCommander}
                   disabled={loadingCommander}
@@ -1028,6 +1009,24 @@ function ManaIcons({ cost }: { cost?: string }) {
                 >
                   {loadingCommander ? 'Sto pescando...' : 'Pesca un comandante'}
                 </button>
+                <label className="text-sm text-slate-200 flex items-center gap-2">
+                  <span className="text-slate-300">Filtro colori (solo pesca casuale):</span>
+                  <select
+                    value={colorFilter}
+                    onChange={(e) => setColorFilter(e.target.value)}
+                    className="glass rounded-xl px-3 py-2 text-sm border-white/20 bg-slate-900/70 focus:border-emerald-300/60 min-w-[200px]"
+                  >
+                    {colorGroups.map((group) => (
+                      <optgroup key={group.label} label={group.label}>
+                        {group.options.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                </label>
                 {commander?.related_uris?.edhrec && (
                   <a
                     href={commander.related_uris.edhrec}
@@ -1044,40 +1043,12 @@ function ManaIcons({ cost }: { cost?: string }) {
                 <p className="text-sm text-slate-200">
                   Oppure scegli tu il comandante (solo creature leggendarie legali):
                 </p>
-                <div className="flex flex-wrap gap-2">
-                  <input
-                    value={commanderQuery}
-                    onChange={(e) => setCommanderQuery(e.target.value)}
-                    placeholder="Es. Atraxa, Alela, Korvold..."
-                    className="flex-1 min-w-[240px] glass rounded-xl px-3 py-2 bg-slate-900/70 border border-white/15 focus:border-emerald-300/60"
-                  />
-                  <div className="glass rounded-xl px-3 py-2 text-sm border border-white/15 bg-slate-900/70 flex items-center gap-2 flex-wrap">
-                    <span className="text-slate-300 whitespace-nowrap">Colori:</span>
-                    <div className="flex gap-1 flex-wrap max-h-24 overflow-y-auto">
-                      {colorOptions.map((opt) => (
-                        <button
-                          key={opt.value}
-                          onClick={() => setColorFilter(opt.value)}
-                          className={`px-2 py-1 rounded-lg border text-xs whitespace-nowrap ${
-                            colorFilter === opt.value
-                              ? 'border-emerald-300 bg-emerald-500/20 text-emerald-100'
-                              : 'border-white/15 text-slate-200 hover:border-emerald-200/50'
-                          }`}
-                        >
-                          {opt.symbols.map((s) => (
-                            <img
-                              key={s}
-                              src={`https://svgs.scryfall.io/card-symbols/${s.toLowerCase()}.svg`}
-                              alt={s}
-                              className="inline h-4 w-4 align-text-bottom mr-0.5"
-                            />
-                          ))}
-                          {opt.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
+                <input
+                  value={commanderQuery}
+                  onChange={(e) => setCommanderQuery(e.target.value)}
+                  placeholder="Es. Atraxa, Alela, Korvold..."
+                  className="w-full glass rounded-xl px-3 py-2 bg-slate-900/70 border border-white/15 focus:border-emerald-300/60"
+                />
                 {commanderResults.length > 0 && (
                   <div className="grid sm:grid-cols-2 gap-2">
                     {commanderResults.map((card) => (
@@ -1310,27 +1281,6 @@ function ManaIcons({ cost }: { cost?: string }) {
           </div>
         </section>
 
-        <section className="glass rounded-3xl p-6 border border-white/10">
-          <h3 className="text-xl font-semibold mb-2">Prossimi step (IA)</h3>
-          <p className="text-slate-200/80">
-            Integrare endpoint EDHREC (o dataset locale) per analizzare le liste
-            popolari del comandante selezionato, applicare reranking con LLM
-            addestrato sul meta locale e aggiungere filtri su budget, power level
-            e tema (tribale, combo, value). La struttura a componenti e gli hook
-            sono già pronti per agganciare nuove fonti dati.
-          </p>
-
-          <div className="mt-4 glass rounded-2xl p-4 border border-white/10">
-            <p className="text-sm text-slate-300 mb-2">Prompt generato (bozza per LLM):</p>
-            <pre className="whitespace-pre-wrap text-slate-100 text-sm bg-slate-900/60 rounded-xl p-3 border border-white/5">
-{buildPrompt()}
-</pre>
-            <p className="text-xs text-slate-400 mt-2">
-              Nota: per usare un LLM serve chiamare un backend che tenga segreta la API key.
-            </p>
-          </div>
-        </section>
-
         <section className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
@@ -1353,12 +1303,6 @@ function ManaIcons({ cost }: { cost?: string }) {
             </div>
           </div>
 
-          {llmNote && (
-            <div className="glass rounded-2xl p-4 border border-white/10 text-sm text-slate-200 whitespace-pre-wrap">
-              {llmNote}
-            </div>
-          )}
-
           {deckLoading && (
             <div className="glass rounded-2xl p-4 text-slate-200">Sto componendo la lista...</div>
           )}
@@ -1366,6 +1310,10 @@ function ManaIcons({ cost }: { cost?: string }) {
           {!deckLoading && roleSummary && (
             <div className="glass rounded-2xl p-4 border border-white/10">
               <p className="text-sm font-semibold mb-2">Suggerimenti IA (delta ruoli)</p>
+              <p className="text-xs text-slate-300 mb-3">
+                Calcolati sul gap tra target per bracket e carte presenti (ramp/draw/removal/protection/wincon).
+                Le proposte sotto mostrano i primi candidati economici per colmare ogni ruolo.
+              </p>
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
                 {(['ramp', 'draw', 'removal', 'protection', 'wincon'] as Role[]).map((r) => {
                   const cur = roleSummary.current[r] ?? 0
@@ -1481,17 +1429,22 @@ function ManaIcons({ cost }: { cost?: string }) {
                           <div className="flex items-start justify-between gap-2">
                             <p className="font-semibold leading-tight">
                               {entry.card.name}
+                              {isGameChanger(entry.card) && (
+                                <span className="ml-2 text-[10px] uppercase tracking-wide bg-amber-500/20 text-amber-100 px-2 py-0.5 rounded-full border border-amber-300/40">
+                                  Game Changer
+                                </span>
+                              )}
                               {entry.qty > 1 && <span className="ml-2 text-xs text-slate-300">x{entry.qty}</span>}
                             </p>
                             <ManaIcons cost={entry.card.mana_cost} />
                           </div>
                           <div className="flex items-center justify-between gap-2">
                             <p className="text-xs text-slate-300 line-clamp-2">{entry.card.type_line}</p>
-                            {entry.card.prices?.usd ?? entry.card.prices?.eur ? (
+                            {cheapestPriceLabel(entry.card) && (
                               <span className="text-xs text-emerald-200/80">
-                                ${entry.card.prices?.usd ?? entry.card.prices?.eur}
+                                {cheapestPriceLabel(entry.card)}
                               </span>
-                            ) : null}
+                            )}
                           </div>
                         </button>
                       ))}
@@ -1541,6 +1494,26 @@ function ManaIcons({ cost }: { cost?: string }) {
           )}
         </section>
 
+        <section className="glass rounded-3xl p-6 border border-white/10">
+          <h3 className="text-xl font-semibold mb-2">Prossimi step (IA)</h3>
+          <p className="text-slate-200/80">
+            Integrare eventuali dataset EDHREC o Moxfield server-side per affinare le sinergie,
+            aggiungere un motore LLM opzionale (solo via backend) e nuove metriche di bilanciamento
+            (curve di mana, count di staple per bracket, power score). Questa sezione è lasciata in
+            fondo perché il prototipo attuale è 100% frontend.
+          </p>
+
+          <div className="mt-4 glass rounded-2xl p-4 border border-white/10">
+            <p className="text-sm text-slate-300 mb-2">Prompt generato (bozza documentativa):</p>
+            <pre className="whitespace-pre-wrap text-slate-100 text-sm bg-slate-900/60 rounded-xl p-3 border border-white/5">
+{buildPrompt()}
+</pre>
+            <p className="text-xs text-slate-400 mt-2">
+              Nota: il prompt è conservato solo a titolo di riferimento; nessuna chiamata a LLM avviene dal browser.
+            </p>
+          </div>
+        </section>
+
         {error && (
           <div className="glass rounded-2xl p-4 text-rose-200 border border-rose-400/40">
             {error}
@@ -1552,3 +1525,5 @@ function ManaIcons({ cost }: { cost?: string }) {
 }
 
 export default App
+
+
