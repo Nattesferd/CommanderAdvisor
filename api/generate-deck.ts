@@ -2,7 +2,7 @@
 import type { IncomingMessage, ServerResponse } from 'http'
 
 export const config = {
-  runtime: 'nodejs18.x',
+  runtime: 'nodejs',
 }
 
 type Body = {
