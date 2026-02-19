@@ -1,4 +1,5 @@
-﻿import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { deriveSynergyQueries } from './lib/oracleSynergy'
 
 type ScryfallCard = {
   id: string
@@ -49,6 +50,15 @@ type DeckEntry = {
 
 const initialSuggestions: SuggestionsState = { cards: [], loading: false }
 const basicCache = new Map<string, ScryfallCard>()
+let usdToEurRate = 0.85
+
+function shuffleInPlace<T>(arr: T[], rnd: () => number = Math.random) {
+  for (let i = arr.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(rnd() * (i + 1))
+    ;[arr[i], arr[j]] = [arr[j], arr[i]]
+  }
+  return arr
+}
 
 const archetypes = [
   { value: 'auto', label: "Lascia decidere all'IA (EDHREC rank)" },
@@ -174,12 +184,33 @@ function App() {
   const [swapSuggestions, setSwapSuggestions] = useState<
     { role: Role; needed: number; candidates: ScryfallCard[] }[]
   >([])
+  const suggestionsRef = useRef<HTMLDivElement | null>(null)
+  const [canScrollLeft, setCanScrollLeft] = useState(false)
+  const [canScrollRight, setCanScrollRight] = useState(false)
+  const [deckSeed, setDeckSeed] = useState<number>(() => Math.random())
+  const [fxRate, setFxRate] = useState<number>(usdToEurRate)
 
   const colorIdentityLabel = useMemo(() => {
     if (!commander) return 'Colore: -'
     if (!commander.color_identity.length) return 'Incolore'
     return commander.color_identity.join(' • ')
   }, [commander])
+
+  const updateScrollState = () => {
+    const el = suggestionsRef.current
+    if (!el) return
+    const max = el.scrollWidth - el.clientWidth
+    setCanScrollLeft(el.scrollLeft > 4)
+    setCanScrollRight(el.scrollLeft < max - 4)
+  }
+
+  const scrollSuggestions = (dir: number) => {
+    const el = suggestionsRef.current
+    if (!el) return
+    const delta = Math.max(el.clientWidth * 0.8, 260) * dir
+    el.scrollBy({ left: delta, behavior: 'smooth' })
+    requestAnimationFrame(updateScrollState)
+  }
 
   useEffect(() => {
     if (commander) setPreviewCard(commander)
@@ -198,6 +229,36 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const res = await fetch('https://api.exchangerate.host/latest?base=USD&symbols=EUR')
+        if (!res.ok) return
+        const data = await res.json()
+        const rate = data?.rates?.EUR
+        if (typeof rate === 'number' && rate > 0) {
+          usdToEurRate = rate
+          setFxRate(rate)
+        }
+      } catch (err) {
+        console.warn('fx fetch failed', err)
+      }
+    })()
+  }, [])
+
+  useEffect(() => {
+    const el = suggestionsRef.current
+    if (!el) return
+    updateScrollState()
+    el.addEventListener('scroll', updateScrollState, { passive: true })
+    window.addEventListener('resize', updateScrollState)
+    return () => {
+      el.removeEventListener('scroll', updateScrollState)
+      window.removeEventListener('resize', updateScrollState)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [suggestions.cards.length])
+
   async function drawCommander() {
     setError(null)
     setLoadingCommander(true)
@@ -205,14 +266,14 @@ function App() {
     setDeck([])
     setDeckSections([])
     setRoleSummary(null)
+    setDeckSeed(Math.random())
 
     try {
-      const colorClause =
-        colorFilter === 'any'
-          ? ''
-          : colorFilter === 'c'
-            ? ' id:c'
-            : ` id:${colorFilter.replace(/,/g, '')}`
+      const colorClause = (() => {
+        if (colorFilter === 'any') return ''
+        const code = colorFilter.replace(/,/g, '')
+        return ` id=${code}`
+      })()
       const query = `is:commander legal:commander game:paper type:legendary -type:scheme -type:plane -type:vanguard${colorClause}`
       const res = await fetch(
         `https://api.scryfall.com/cards/random?q=${encodeURIComponent(query)}`,
@@ -239,7 +300,9 @@ function App() {
     }
     setError(null)
     try {
-      const query = `is:commander legal:commander game:paper type:legendary ${commanderQuery}`
+      const colorClause =
+        colorFilter === 'any' ? '' : ` id=${colorFilter.replace(/,/g, '')}`
+      const query = `is:commander legal:commander game:paper type:legendary${colorClause} ${commanderQuery}`
       const res = await fetch(
         `https://api.scryfall.com/cards/search?order=edhrec&unique=cards&q=${encodeURIComponent(query)}`,
       )
@@ -452,10 +515,13 @@ function isBasicLandCard(card: ScryfallCard) {
 }
 
 function cardPrice(card: ScryfallCard): number | null {
-  const raw = [card.prices?.usd, card.prices?.usd_foil, card.prices?.eur]
-    .map((p) => (p ? parseFloat(p) : NaN))
-    .filter((n) => !Number.isNaN(n) && n > 0)
-  if (raw.length) return Math.min(...raw)
+  const eur = card.prices?.eur ? parseFloat(card.prices.eur) : NaN
+  if (!Number.isNaN(eur) && eur > 0) return eur
+  const usd = card.prices?.usd ? parseFloat(card.prices.usd) : NaN
+  const usdFoil = card.prices?.usd_foil ? parseFloat(card.prices.usd_foil) : NaN
+  const rate = usdToEurRate
+  const converted = [usd, usdFoil].filter((n) => !Number.isNaN(n) && n > 0).map((n) => n * rate)
+  if (converted.length) return Math.min(...converted)
   if (isBasicLandCard(card)) return 0
   return null
 }
@@ -463,7 +529,7 @@ function cardPrice(card: ScryfallCard): number | null {
 function cheapestPriceLabel(card: ScryfallCard) {
   const value = cardPrice(card)
   if (value === null) return ''
-  return value >= 1 ? `$${value.toFixed(2)}` : `$${value.toFixed(3)}`
+  return `€${value.toFixed(2)}`
 }
 
 const gameChangerNames = new Set(
@@ -666,6 +732,7 @@ function ManaIcons({ cost }: { cost?: string }) {
       setError('Prima pesca un comandante, poi genera il mazzo.')
       return
     }
+    setDeckSeed(Math.random())
     setDeckLoading(true)
     setError(null)
     setDeck([])
@@ -674,6 +741,8 @@ function ManaIcons({ cost }: { cost?: string }) {
     try {
       const priceCap = priceCapValue(priceRange)
       const budgetTotal = totalBudget(priceRange)
+      const priceCapEur = isFinite(priceCap) ? priceCap * fxRate : Infinity
+      const budgetEur = isFinite(budgetTotal) ? budgetTotal * fxRate : Infinity
 
       const targetsByBracket: Record<string, { lands: number; creatures: number; instants: number; sorceries: number; enchantments: number; artifacts: number; planeswalkers: number }> = {
         '1': { lands: 38, creatures: 28, instants: 6, sorceries: 6, enchantments: 8, artifacts: 8, planeswalkers: 1 },
@@ -683,7 +752,19 @@ function ManaIcons({ cost }: { cost?: string }) {
         '5': { lands: 33, creatures: 22, instants: 10, sorceries: 10, enchantments: 6, artifacts: 10, planeswalkers: 3 },
       }
 
+      const textCommander = `${commander.type_line} ${commander.oracle_text ?? ''}`.toLowerCase()
+      const isAttackCommander = textCommander.includes('attack') || textCommander.includes('attacks') || textCommander.includes('attacking')
+      const hasTribal = /cleric|rogue|warrior|wizard|soldier|elf|goblin|zombie|vampire|dragon|angel|demon|assassin|samurai|ninja/i.test(
+        textCommander,
+      )
+
       const targets = targetsByBracket[bracket] ?? targetsByBracket['3']
+      if (isAttackCommander) {
+        targets.creatures += 4
+        targets.enchantments += 1
+        targets.instants = Math.max(0, targets.instants - 1)
+        targets.sorceries = Math.max(0, targets.sorceries - 1)
+      }
       const roleTargets: Record<Role, number> =
         bracket === '5'
           ? { ramp: 12, draw: 12, removal: 12, protection: 10, wincon: 8, land: targets.lands, value: 99 }
@@ -713,23 +794,31 @@ function ManaIcons({ cost }: { cost?: string }) {
       const archetypePart = archetypeQuery(archetype)
       if (archetypePart) queryParts.push(archetypePart)
 
+      const synergyFilters = deriveSynergyQueries(commander, 4)
+      if (synergyFilters.length) queryParts.push(`(${synergyFilters.join(' OR ')})`)
+
       const query = queryParts.join(' ')
-      const pool = (await fetchPool(query, 600)).filter((card) => card.id !== commander.id)
+      const pool = (await fetchPool(query, 800)).filter((card) => card.id !== commander.id)
 
       const uniqueByName = new Map<string, ScryfallCard>()
       for (const card of pool) {
         if (!uniqueByName.has(card.name)) uniqueByName.set(card.name, card)
       }
 
-      const source = Array.from(uniqueByName.values())
-        .filter((card) => cardPrice(card) !== null)
-        .sort((a, b) => (cardPrice(a) ?? Infinity) - (cardPrice(b) ?? Infinity))
+      const sourceBase = Array.from(uniqueByName.values()).filter((card) => cardPrice(card) !== null)
+      // keep affordability bias but add randomness per run
+      sourceBase.sort((a, b) => (cardPrice(a) ?? Infinity) - (cardPrice(b) ?? Infinity))
+      shuffleInPlace(sourceBase, () => {
+        const x = Math.sin(deckSeed + Math.random()) * 43758.5453
+        return x - Math.floor(x)
+      })
+      const source = sourceBase
 
       const used = new Set<string>()
       const decklist: ScryfallCard[] = []
       let landCount = 0
       let totalCost = 0
-      let remainingBudget = budgetTotal
+      let remainingBudget = budgetEur
       const gameChangerCap = { 1: 0, 2: 1, 3: 3, 4: 6, 5: 99 }[bracket] ?? 3
       let gameChangerCount = 0
       const roleCount: Record<Role, number> = {
@@ -742,32 +831,94 @@ function ManaIcons({ cost }: { cost?: string }) {
         value: 0,
       }
 
-      const withinBudget = (card: ScryfallCard) => {
+      const withinBudget = (card: ScryfallCard, ignoreTotal = false) => {
         const price = cardPrice(card)
         if (price === null) return false
-        if (isFinite(priceCap) && price > priceCap) return false
-        if (!isFinite(remainingBudget)) return true
+        if (isFinite(priceCapEur) && price > priceCapEur) return false
+        if (ignoreTotal || !isFinite(remainingBudget)) return true
         return price <= remainingBudget + 1e-6
+      }
+
+      const addCard = (card: ScryfallCard, roleHint?: Role, opts?: { ignoreBudget?: boolean }) => {
+        if (decklist.length >= 99) return false
+        if (used.has(card.name)) return false
+        if (isGameChanger(card) && gameChangerCount >= gameChangerCap) return false
+        if (isForbidden(card, bracket)) return false
+        if (!withinBudget(card, opts?.ignoreBudget)) return false
+        used.add(card.name)
+        decklist.push(card)
+        const price = cardPrice(card) ?? 0
+        if (!opts?.ignoreBudget && isFinite(remainingBudget)) remainingBudget = Math.max(0, remainingBudget - price)
+        totalCost += price
+        if (isGameChanger(card)) gameChangerCount += 1
+        if (isType(card, 'land')) landCount += 1
+        const r = roleHint ?? classifyRole(card)
+        roleCount[r] = (roleCount[r] ?? 0) + 1
+        return true
+      }
+
+      const stapleCache = new Map<string, ScryfallCard>()
+      const fetchNamed = async (name: string) => {
+        if (stapleCache.has(name)) return stapleCache.get(name)
+        const res = await fetch(
+          `https://api.scryfall.com/cards/named?format=json&exact=${encodeURIComponent(name)}`,
+        )
+        if (!res.ok) return null
+        const card: ScryfallCard = await res.json()
+        stapleCache.set(name, card)
+        return card
+      }
+
+      const stapleNames: string[] = ['Sol Ring', 'Arcane Signet', "Commander's Sphere"]
+      if (commander.color_identity.length >= 2) {
+        const colors = commander.color_identity.map((c) => c.toUpperCase()).join('')
+        const signets: Record<string, string[]> = {
+          WU: ['Azorius Signet'],
+          UB: ['Dimir Signet'],
+          BR: ['Rakdos Signet'],
+          RG: ['Gruul Signet'],
+          GW: ['Selesnya Signet'],
+          WB: ['Orzhov Signet'],
+          UR: ['Izzet Signet'],
+          BG: ['Golgari Signet'],
+          RW: ['Boros Signet'],
+          GU: ['Simic Signet'],
+        }
+        Object.entries(signets).forEach(([key, vals]) => {
+          if (key.split('').every((c) => colors.includes(c))) stapleNames.push(...vals)
+        })
+        stapleNames.push('Fellwar Stone')
+      }
+
+      if (isAttackCommander) {
+        stapleNames.push('Reconnaissance', 'Dolmen Gate', 'Brave the Sands')
+        if (commander.color_identity.includes('R')) {
+          stapleNames.push('Ogre Battledriver', 'Fervor', 'Relentless Assault')
+        }
+        if (commander.color_identity.includes('W')) {
+          stapleNames.push('Anointed Procession')
+        }
+      }
+
+      if (hasTribal) {
+        stapleNames.push('Door of Destinies', 'Herald\'s Horn', 'Kindred Discovery')
+      }
+
+      // inject staples early
+      for (const name of stapleNames) {
+        if (decklist.length >= 12) break
+        // eslint-disable-next-line no-await-in-loop
+        const card = await fetchNamed(name)
+        if (card) addCard(card, 'ramp')
       }
 
       const pick = (predicate: (c: ScryfallCard) => boolean, needed: number, roleHint?: Role) => {
         for (const card of source) {
           if (decklist.length >= 99) break
-          if (used.has(card.name)) continue
-          if (isGameChanger(card) && gameChangerCount >= gameChangerCap) continue
-          if (isForbidden(card, bracket)) continue
           if (!predicate(card)) continue
-          if (!withinBudget(card)) continue
-          used.add(card.name)
-          decklist.push(card)
-          const price = cardPrice(card) ?? 0
-          if (isFinite(remainingBudget)) remainingBudget = Math.max(0, remainingBudget - price)
-          totalCost += price
-          if (isGameChanger(card)) gameChangerCount += 1
-          if (isType(card, 'land')) landCount += 1
-          const r = roleHint ?? classifyRole(card)
-          roleCount[r] += 1
-          if (--needed <= 0) break
+          if (addCard(card, roleHint)) {
+            if (--needed <= 0) break
+          }
         }
       }
 
@@ -890,6 +1041,38 @@ function ManaIcons({ cost }: { cost?: string }) {
           need,
           role,
         )
+      }
+
+      // If still short, relax total budget but keep per-card cap
+      if (decklist.length < 99) {
+        for (const card of source) {
+          if (decklist.length >= 99) break
+          addCard(card, classifyRole(card), { ignoreBudget: true })
+        }
+      }
+
+      // Final safety: fill basics if still short
+      while (decklist.length < 99) {
+        const name = (commander.color_identity[0] === 'W' && 'Plains') ||
+          (commander.color_identity[0] === 'U' && 'Island') ||
+          (commander.color_identity[0] === 'B' && 'Swamp') ||
+          (commander.color_identity[0] === 'R' && 'Mountain') ||
+          (commander.color_identity[0] === 'G' && 'Forest') ||
+          'Wastes'
+        if (!basicCache.has(name)) {
+          // eslint-disable-next-line no-await-in-loop
+          const resBasic = await fetch(
+            `https://api.scryfall.com/cards/named?format=json&exact=${encodeURIComponent(name)}`,
+          )
+          if (resBasic.ok) {
+            // eslint-disable-next-line no-await-in-loop
+            const card: ScryfallCard = await resBasic.json()
+            basicCache.set(name, card)
+          }
+        }
+        const basic = basicCache.get(name)
+        if (!basic) break
+        decklist.push({ ...basic, id: `${basic.id}-${decklist.length}` })
       }
 
       const suggestions: { role: Role; needed: number; candidates: ScryfallCard[] }[] = []
@@ -1219,66 +1402,89 @@ function ManaIcons({ cost }: { cost?: string }) {
             </div>
           </div>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {suggestions.loading && (
-              <div className="md:col-span-2 lg:col-span-4 glass rounded-2xl p-6 text-slate-300">
-                Caricamento suggerimenti da Scryfall...
-              </div>
-            )}
+          {suggestions.loading && (
+            <div className="glass rounded-2xl p-6 text-slate-300">Caricamento suggerimenti da Scryfall...</div>
+          )}
 
-            {!suggestions.loading && !suggestions.cards.length && (
-              <div className="md:col-span-2 lg:col-span-4 glass rounded-2xl p-6 text-slate-300">
-                Nessun suggerimento disponibile. Prova a pescare un altro comandante.
-              </div>
-            )}
+          {!suggestions.loading && !suggestions.cards.length && (
+            <div className="glass rounded-2xl p-6 text-slate-300">
+              Nessun suggerimento disponibile. Prova a pescare un altro comandante.
+            </div>
+          )}
 
-            {suggestions.cards.map((card) => (
-              <article
-                key={card.id}
-                className="glass rounded-2xl p-4 flex flex-col gap-3 hover:-translate-y-1 transition-transform"
-                onMouseEnter={() => setPreviewCard(card)}
-                onFocus={() => setPreviewCard(card)}
-                onMouseLeave={() => setPreviewCard(null)}
-                onBlur={() => setPreviewCard(null)}
+          {!suggestions.loading && suggestions.cards.length > 0 && (
+            <div className="relative w-full overflow-hidden">
+              <div
+                ref={suggestionsRef}
+                className="flex gap-4 overflow-x-auto pb-2 scroll-smooth snap-x snap-mandatory pr-16 pl-2"
+                style={{ scrollbarWidth: 'thin', msOverflowStyle: 'none' }}
               >
-                <div className="rounded-xl overflow-hidden border border-white/10 h-40 bg-slate-900">
-                  {card.image_uris?.art_crop || card.image_uris?.normal ? (
-                    <img
-                      src={card.image_uris.art_crop ?? card.image_uris.normal}
-                      alt={card.name}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full grid place-items-center text-slate-500 text-sm">
-                      Nessuna immagine
+                {suggestions.cards.map((card) => (
+                  <article
+                    key={card.id}
+                    className="min-w-[240px] max-w-[260px] snap-start glass rounded-2xl p-4 flex flex-col gap-3 hover:-translate-y-1 transition-transform"
+                    onMouseEnter={() => setPreviewCard(card)}
+                    onFocus={() => setPreviewCard(card)}
+                    onMouseLeave={() => setPreviewCard(null)}
+                    onBlur={() => setPreviewCard(null)}
+                  >
+                    <div className="rounded-xl overflow-hidden border border-white/10 h-40 bg-slate-900">
+                      {card.image_uris?.art_crop || card.image_uris?.normal ? (
+                        <img
+                          src={card.image_uris.art_crop ?? card.image_uris.normal}
+                          alt={card.name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full grid place-items-center text-slate-500 text-sm">
+                          Nessuna immagine
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-                <div className="space-y-1">
-                  <p className="font-semibold text-lg leading-tight">{card.name}</p>
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm text-slate-300 leading-snug">{card.type_line}</p>
-                    <ManaIcons cost={card.mana_cost} />
-                  </div>
-                  {card.oracle_text && (
-                    <p className="text-sm text-slate-400 max-h-20 overflow-hidden">
-                      {card.oracle_text}
-                    </p>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-2 mt-auto">
-                  {(card.color_identity.length ? card.color_identity : ['C']).map((symbol) => (
-                    <span
-                      key={`${card.id}-${symbol}`}
-                      className={`pill ${colorStyling[symbol] ?? colorStyling.C}`}
-                    >
-                      {symbol}
-                    </span>
-                  ))}
-                </div>
-              </article>
-            ))}
-          </div>
+                    <div className="space-y-1">
+                      <p className="font-semibold text-base leading-tight">{card.name}</p>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs text-slate-300 leading-snug line-clamp-2">{card.type_line}</p>
+                        <ManaIcons cost={card.mana_cost} />
+                      </div>
+                      {card.oracle_text && (
+                        <p className="text-xs text-slate-400 line-clamp-3">{card.oracle_text}</p>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-2 mt-auto">
+                      {(card.color_identity.length ? card.color_identity : ['C']).map((symbol) => (
+                        <span
+                          key={`${card.id}-${symbol}`}
+                          className={`pill ${colorStyling[symbol] ?? colorStyling.C}`}
+                        >
+                          {symbol}
+                        </span>
+                      ))}
+                    </div>
+                  </article>
+                ))}
+              </div>
+              <div className="pointer-events-none absolute inset-y-0 left-0 right-0 bg-gradient-to-r from-slate-900/85 via-transparent to-slate-900/85" />
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 flex gap-2 z-10">
+                <button
+                  onClick={() => scrollSuggestions(-1)}
+                  disabled={!canScrollLeft}
+                  className="glass px-2 py-1 rounded-lg border border-white/15 hover:border-emerald-300/60 shadow-lg shadow-slate-900/30 pointer-events-auto disabled:opacity-40 disabled:cursor-not-allowed"
+                  aria-label="Scroll suggerimenti indietro"
+                >
+                  ‹
+                </button>
+                <button
+                  onClick={() => scrollSuggestions(1)}
+                  disabled={!canScrollRight}
+                  className="glass px-2 py-1 rounded-lg border border-white/15 hover:border-emerald-300/60 shadow-lg shadow-slate-900/30 pointer-events-auto disabled:opacity-40 disabled:cursor-not-allowed"
+                  aria-label="Scroll suggerimenti avanti"
+                >
+                  ›
+                </button>
+              </div>
+            </div>
+          )}
         </section>
 
         <section className="space-y-4">
