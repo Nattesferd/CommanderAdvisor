@@ -148,6 +148,10 @@ function App() {
     target: Record<Role, number>
     current: Record<Role, number>
   } | null>(null)
+  const [swapSuggestions, setSwapSuggestions] = useState<
+    { role: Role; needed: number; candidates: ScryfallCard[] }[]
+  >([])
+  const apiBase = import.meta.env.VITE_API_BASE ?? ''
 
   const colorIdentityLabel = useMemo(() => {
     if (!commander) return 'Colore: -'
@@ -425,7 +429,7 @@ function totalBudget(range: string) {
     return found ? found.label : range
   }
 
-  function exportText(format: 'txt' | 'csv' | 'moxfield') {
+  function exportText(format: 'txt' | 'csv' | 'moxfield' | 'json') {
     if (!commander) return
     const lines: string[] = []
     if (format === 'moxfield') {
@@ -441,6 +445,23 @@ function totalBudget(range: string) {
         lines.push(line)
       })
     })
+    if (format === 'json') {
+      const payload = {
+        commander: commander.name,
+        mainboard: deckSections.flatMap((s) =>
+          s.entries.map((e) => ({ name: e.card.name, count: e.qty })),
+        ),
+      }
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'commander-advisor.json'
+      a.click()
+      URL.revokeObjectURL(url)
+      return
+    }
+
     const blob =
       format === 'csv'
         ? new Blob([lines.map((l) => `"${l.replace(/"/g, '""')}"`).join('\n')], {
@@ -460,6 +481,19 @@ function totalBudget(range: string) {
     URL.revokeObjectURL(url)
   }
 
+  function swapIn(card: ScryfallCard) {
+    setDeck((prev) => {
+      if (!prev.length) return prev
+      const exists = prev.find((c) => c.name === card.name)
+      if (exists) return prev
+      const replaced = [...prev]
+      replaced.pop()
+      replaced.push(card)
+      setDeckSections(groupDeck(replaced))
+      return replaced
+    })
+  }
+
 function landColorScore(card: ScryfallCard, commanderColors: string[]) {
   if (!isType(card, 'land')) return 0
   const landColors = card.color_identity ?? []
@@ -476,7 +510,13 @@ function isForbidden(card: ScryfallCard, bracket: string) {
   const noTurns = text.includes('extra turn')
   const noTutors = text.includes('search your library') || text.includes('tutor')
   const noMld = text.includes('destroy all lands') || text.includes('sacrifice all lands')
-  return noTurns || noTutors || noMld
+  const fastMana =
+    text.includes('add three mana') ||
+    text.includes('add {c}{c}{c}') ||
+    text.includes('mana vault') ||
+    text.includes('mana crypt') ||
+    text.includes('jeweled lotus')
+  return noTurns || noTutors || noMld || fastMana
 }
 
 function classifyRole(card: ScryfallCard): Role {
@@ -771,6 +811,22 @@ function ManaIcons({ cost }: { cost?: string }) {
         )
       }
 
+      const suggestions: { role: Role; needed: number; candidates: ScryfallCard[] }[] = []
+      for (const role of missingRoles) {
+        const need = needRole(role)
+        if (need <= 0) continue
+        const candidates = source
+          .filter(
+            (c) =>
+              !used.has(c.name) &&
+              classifyRole(c) === role &&
+              (c.color_identity.length === 0 || c.color_identity.every((clr) => colors.includes(clr))),
+          )
+          .slice(0, 5)
+        if (candidates.length) suggestions.push({ role, needed: need, candidates })
+      }
+      setSwapSuggestions(suggestions)
+
       const finalList = decklist.slice(0, 99)
       setRoleSummary({ target: roleTargets, current: roleCount })
       setDeck(finalList)
@@ -788,7 +844,7 @@ function ManaIcons({ cost }: { cost?: string }) {
               }`,
           )
           .join('\n')
-        const resp = await fetch('/api/generate-deck', {
+        const resp = await fetch(`${apiBase || ''}/api/generate-deck`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1315,6 +1371,30 @@ function ManaIcons({ cost }: { cost?: string }) {
                   )
                 })}
               </div>
+              {swapSuggestions.length > 0 && (
+                <div className="mt-3 space-y-2">
+                  {swapSuggestions.map((sugg) => (
+                    <div key={sugg.role} className="glass rounded-xl p-3 border border-white/10">
+                      <p className="text-sm font-semibold mb-2">
+                        Mancano {sugg.needed} per {sugg.role}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {sugg.candidates.map((c) => (
+                          <button
+                            key={c.id}
+                            onClick={() => swapIn(c)}
+                            className="glass px-3 py-2 rounded-lg border border-emerald-300/40 hover:border-emerald-200 transition-colors text-left"
+                            title={c.oracle_text ?? c.type_line}
+                          >
+                            <p className="text-sm font-semibold">{c.name}</p>
+                            <p className="text-xs text-slate-300 line-clamp-2">{c.type_line}</p>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
               <div className="flex flex-wrap gap-2 mt-3 text-sm">
                 <button
                   onClick={() => exportText('txt')}
@@ -1333,6 +1413,12 @@ function ManaIcons({ cost }: { cost?: string }) {
                   className="px-3 py-2 rounded-lg glass border border-white/20"
                 >
                   Export Moxfield
+                </button>
+                <button
+                  onClick={() => exportText('json')}
+                  className="px-3 py-2 rounded-lg glass border border-white/20"
+                >
+                  Export JSON
                 </button>
               </div>
             </div>
