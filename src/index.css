@@ -1,0 +1,34 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: 'Space Grotesk', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: #e5e7eb;
+  background-color: #05060f;
+}
+
+body {
+  @apply bg-slate-950 text-slate-100 min-h-screen;
+  background-image:
+    radial-gradient(circle at 20% 20%, rgba(99, 102, 241, 0.18), transparent 25%),
+    radial-gradient(circle at 80% 0%, rgba(14, 165, 233, 0.18), transparent 20%),
+    radial-gradient(circle at 50% 60%, rgba(34, 197, 94, 0.12), transparent 30%),
+    linear-gradient(145deg, #05060f 0%, #0a0f1f 50%, #05060f 100%);
+}
+
+a {
+  @apply text-sky-300 transition-colors hover:text-sky-200;
+}
+
+@layer components {
+  .glass {
+    @apply bg-white/5 border border-white/10 backdrop-blur-xl shadow-2xl shadow-sky-900/20;
+  }
+
+  .pill {
+    @apply px-3 py-1 rounded-full text-xs uppercase tracking-wide font-semibold;
+  }
+}
